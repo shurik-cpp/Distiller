@@ -1,0 +1,47 @@
+{
+    "ds18b20": [
+        {
+            "hash": 946,
+            "resolution": 11,
+            "name": "my sensor1",
+            "correction": -0.340000004
+        },
+        {
+            "hash": 1030,
+            "resolution": 12,
+            "name": "28354579a2000043",
+            "correction": 0
+        },
+        {
+            "hash": 1320,
+            "resolution": 12,
+            "name": "28009479a20000b8",
+            "correction": 0
+        },
+        {
+            "hash": 1354,
+            "resolution": 12,
+            "name": "28c72979a200006f",
+            "correction": 0
+        },
+        {
+            "hash": 1612,
+            "resolution": 9,
+            "name": "my sensor2",
+            "correction": 0.270000011
+        },
+        {
+            "hash": 1630,
+            "resolution": 12,
+            "name": "2881db79a200008d",
+            "correction": 0
+        }
+    ],
+    "bmp": {
+        "t_correction": 0.15,
+        "p_correction": 0.32
+    },
+    "distiller": {
+        "mode" : "AUTO"
+    }
+}
