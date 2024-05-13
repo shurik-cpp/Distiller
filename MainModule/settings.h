@@ -18,6 +18,7 @@ const int SENSOR_ACCURACY = 1000;
 #include <stdint.h>
 #include <map>
 #include <vector>
+#include <memory>
 #include <ArduinoJson.h>
 #include "ddTypes.h"
 
@@ -26,13 +27,14 @@ class Settings {
 private:
 	const String _filename = "/settings.json";
 	static Settings* _setup;
-	std::map<SensorHash, SensorInfo> _dsSensors;
-	std::map<SensorHash, SensorInfo> getSensorsInfoFromJson(const JsonDocument& json) const;
-	BmpInfo _bmpInfo;
-	DistillerInfo _distillerInfo;
+	std::map<SensorHash, std::shared_ptr<SensorInfo>> _dsSensors;
+	std::shared_ptr<BmpInfo> _bmpInfo;
+	std::shared_ptr<DistillerInfo> _distillerInfo;
+
+	std::map<SensorHash, std::shared_ptr<SensorInfo>> getSensorsInfoFromJson(const JsonDocument& json) const;
 	bool initFromJson();
 	JsonDocument getJsonFromFile() const;
-	bool saveJsonToFile(const JsonDocument& json);
+	bool saveJsonToFile(const JsonDocument& json) const;
 
 public:
 	explicit Settings();
@@ -44,13 +46,15 @@ public:
 
 	static Settings* const getInstance();
 
-	const SensorInfo* getSensorInfoAtHash(const SensorHash hash) const noexcept;
-	bool saveSensorsInfo(const std::vector<SensorInfo>& sensorsInfo);
+	void addSensorInfo(const std::shared_ptr<SensorInfo>& info);
+	std::shared_ptr<SensorInfo> getSensorInfoAtHash(const SensorHash hash) const noexcept;
+	bool saveSensorsInfo() const;
 
-	const BmpInfo& getBmpInfo() const { return _bmpInfo; }
-	bool saveBmpInfo(const BmpInfo& bmpInfo);
-	const DistillerInfo& getDistillerInfo() const { return _distillerInfo; }
-	bool saveDistillerInfo(const DistillerInfo& distillerInfo);
+	std::shared_ptr<BmpInfo> getBmpInfo() const { return _bmpInfo; }
+	bool saveBmpInfo() const;
+
+	std::shared_ptr<DistillerInfo> getDistillerInfo() const { return _distillerInfo; }
+	bool saveDistillerInfo() const;
 };
 
 #endif  // SETTINGS_H

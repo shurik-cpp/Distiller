@@ -42,6 +42,13 @@
         "p_correction": 0.32
     },
     "distiller": {
-        "mode" : "AUTO"
+        "mode" : "AUTO",
+        "sensor_map" : {
+            "TOP_COLUMN" : 1612,
+            "CENTER_COLUMN" : 0,
+            "CUBE" : 946,
+            "TOP_REFLUX" : 0
+        }
+
     }
 }

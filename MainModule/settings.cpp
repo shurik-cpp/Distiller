@@ -39,17 +39,17 @@ static DistillerMode StrToDistillerMode(const String& mode) {
 	return DistillerMode::AUTO; // DEFAULT
 }
 
-std::map<SensorHash, SensorInfo> Settings::getSensorsInfoFromJson(const JsonDocument& json) const {
-	std::map<SensorHash, SensorInfo> result;
+std::map<SensorHash, std::shared_ptr<SensorInfo>> Settings::getSensorsInfoFromJson(const JsonDocument& json) const {
+	std::map<SensorHash, std::shared_ptr<SensorInfo>> result;
 	size_t i = 0;
 	const auto& sensors = json["ds18b20"];
 	while (sensors[i]) {
-		SensorInfo info;
-		info._hash = sensors[i]["hash"];
-		info._resolution = static_cast<DS_Resolution>(static_cast<int>(sensors[i]["resolution"]));
-		info._name = String(static_cast<const char*>(sensors[i]["name"]));
-		info._correction = sensors[i]["correction"];
-		result.insert({info._hash, std::move(info)});
+		std::shared_ptr<SensorInfo> info(new SensorInfo());
+		info->_hash = sensors[i]["hash"];
+		info->_resolution = static_cast<DS_Resolution>(static_cast<int>(sensors[i]["resolution"]));
+		info->_name = String(static_cast<const char*>(sensors[i]["name"]));
+		info->_correction = sensors[i]["correction"];
+		result.insert({info->_hash, std::move(info)});
 		++i;
 	}
 	return std::move(result);
@@ -61,21 +61,16 @@ bool Settings::initFromJson() {
 
 	if (json.containsKey("ds18b20")) {
 		_dsSensors = getSensorsInfoFromJson(json);
-#ifdef DEBUG
-		Serial.printf("====== from json ======\n");
-		for (const auto& it : _dsSensors) {
-			Serial.printf("hash: %u\nres: %u\nname: %s\ncorr: %.3f\n----\n", it.first, it.second._resolution, it.second._name.c_str(), it.second._correction);
-		}
-		Serial.printf("=======================\n");
-#endif //DEBUG
 	}
+	_bmpInfo = std::shared_ptr<BmpInfo>(new BmpInfo());
 	if (json.containsKey("bmp")) {
-		_bmpInfo._temperatureCorrection = json["bmp"]["t_correction"];
-		_bmpInfo._pressureCorrection = json["bmp"]["p_correction"];
+		_bmpInfo->_temperatureCorrection = json["bmp"]["t_correction"];
+		_bmpInfo->_pressureCorrection = json["bmp"]["p_correction"];
 	}
+	_distillerInfo = std::shared_ptr<DistillerInfo>(new DistillerInfo());
 	if (json.containsKey("distiller")) {
 		const char* strMode = json["distiller"]["mode"];
-		_distillerInfo._mode = StrToDistillerMode(String(strMode));
+		_distillerInfo->_mode = StrToDistillerMode(String(strMode));
 	}
 	return true;
 }
@@ -98,7 +93,7 @@ JsonDocument Settings::getJsonFromFile() const {
     return std::move(json);
 }
 
-bool Settings::saveJsonToFile(const JsonDocument &json) {
+bool Settings::saveJsonToFile(const JsonDocument &json) const {
     FileWrapper file(_filename, FILE_WRITE);
 	if (!file.isOpen()) {
 		Serial.println("WRITE TO FILE FAILED!");
@@ -127,16 +122,17 @@ Settings *const Settings::getInstance() {
 	return _setup;
 }
 
-const SensorInfo* Settings::getSensorInfoAtHash(const SensorHash hash) const noexcept {
-	if (_dsSensors.count(hash))
-		return &_dsSensors.at(hash);
-	return nullptr;
+void Settings::addSensorInfo(const std::shared_ptr<SensorInfo> &info) {
+	_dsSensors[info->_hash] = info;
 }
 
-bool Settings::saveSensorsInfo(const std::vector<SensorInfo>& sensorsInfo) {
-	for (const auto& it : sensorsInfo) {
-		_dsSensors[it._hash] = it;
-	}
+std::shared_ptr<SensorInfo> Settings::getSensorInfoAtHash(const SensorHash hash) const noexcept {
+    if (_dsSensors.count(hash))
+		return _dsSensors.at(hash);
+	return std::shared_ptr<SensorInfo>(nullptr);
+}
+
+bool Settings::saveSensorsInfo() const {
 	JsonDocument json = getJsonFromFile();
 
 	if (!json.containsKey("ds18b20")) {
@@ -147,16 +143,14 @@ bool Settings::saveSensorsInfo(const std::vector<SensorInfo>& sensorsInfo) {
 	for (const auto& it : _dsSensors) {
 		JsonObject item = sensors.add<JsonObject>();
 		item["hash"] = it.first;
-		item["resolution"] = static_cast<int>(it.second._resolution);
-		item["name"] = it.second._name.c_str();
-		item["correction"] = it.second._correction;
+		item["resolution"] = static_cast<int>(it.second->_resolution);
+		item["name"] = it.second->_name.c_str();
+		item["correction"] = it.second->_correction;
 	}
 	return saveJsonToFile(json);
 }
 
-bool Settings::saveBmpInfo(const BmpInfo& bmpInfo) {
-	_bmpInfo = bmpInfo;
-
+bool Settings::saveBmpInfo() const {
 	JsonDocument json = getJsonFromFile();
 
 	if (!json.containsKey("bmp")) {
@@ -166,15 +160,13 @@ bool Settings::saveBmpInfo(const BmpInfo& bmpInfo) {
 		json["bmp"].add("p_correction");
 	}
 	auto bmpJson = json["bmp"].to<JsonObject>();
-	bmpJson["t_correction"] = _bmpInfo._temperatureCorrection;
-	bmpJson["p_correction"] = _bmpInfo._pressureCorrection;
+	bmpJson["t_correction"] = _bmpInfo->_temperatureCorrection;
+	bmpJson["p_correction"] = _bmpInfo->_pressureCorrection;
 
 	return saveJsonToFile(json);
 }
 
-bool Settings::saveDistillerInfo(const DistillerInfo& distillerInfo) {
-	_distillerInfo = distillerInfo;
-
+bool Settings::saveDistillerInfo() const {
 	JsonDocument json = getJsonFromFile();
 
 	if (!json.containsKey("distiller")) {
@@ -183,7 +175,7 @@ bool Settings::saveDistillerInfo(const DistillerInfo& distillerInfo) {
 		json["distiller"].add("mode");
 	}
 	auto distillerJson = json["distiller"].to<JsonObject>();
-	distillerJson["mode"] = DistillerModeToStr(_distillerInfo._mode).c_str();
+	distillerJson["mode"] = DistillerModeToStr(_distillerInfo->_mode).c_str();
 
 	return saveJsonToFile(json);
 }

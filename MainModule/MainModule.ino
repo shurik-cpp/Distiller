@@ -1,6 +1,7 @@
 #include "settings.h"
 #include <time_manager.h>
 #include "sensors.h"
+#include "distiller.h"
 
 
 //! -------------------------------- SETUP ----------------------
@@ -14,7 +15,10 @@ void setup(void) {
 //!--------------------------------------- LOOP ------------------------------
 void loop(void) {
 	SensorsManager* sensorsManager = SensorsManager::getInstance();
+	Distiller* distiller = Distiller::getInstance();
 	sensorsManager->tick();
+	distiller->tick();
+	
 	static uint64_t cycle = 0;
 
 	static TimeManager timer(1000);

@@ -3,6 +3,7 @@
 
 #include "settings.h"
 #include <vector> //From library ArduinoSTL
+#include <memory>
 #include <time_manager.h>
 #include <DallasTemperature.h>
 #include <Wire.h>
@@ -33,7 +34,7 @@ class DS18B20 {
 private:
 	void init();
 	OneWireAddress _address;
-	SensorInfo _info;
+	std::shared_ptr<SensorInfo> _info;
 	float _rawTemperature = 0;
 	TimeManager _timer;		// таймер опроса датчика
 
@@ -47,35 +48,33 @@ public:
 	DS18B20(DS18B20&& other);
 	const DS18B20& operator=(const DS18B20& other);
 	const DS18B20& operator=(DS18B20&& other);
-
+	
 	const OneWireAddress& getAddress() const { return _address; }
-	SensorHash getHash() const { return _info._hash; }
-	void setInfo(const SensorInfo& info);
+	SensorHash getHash() const { return getAddress().getHash(); }
 	float getTemperature() const;
 	void setRawTemperature(const float temp) { _rawTemperature = temp; }
 	float getRawTemperature() const { return _rawTemperature; }
-	const SensorInfo& getInfo() const { return _info; }
+	std::shared_ptr<SensorInfo> getInfo() const { return _info; }
 	void setName(const String& name);
 	const String& getName() const;
-	float getCorrection() const { return _info._correction; }
-	void setCorrection(const float corr) { _info._correction = corr; }
+	float getCorrection() const { return _info->_correction; }
+	void setCorrection(const float corr) { _info->_correction = corr; }
 	void setResolution(const DS_Resolution res);
-	DS_Resolution getResolution() const { return _info._resolution; }
-	void recalcHash();
+	DS_Resolution getResolution() const { return _info->_resolution; }
 	bool isTimerReady() const;
 };
 
 class AdvancedBmp : public BMP180 {
 private:
-	BmpInfo _info;
+	std::shared_ptr<BmpInfo> _info;
 
 public:
-	void setTemperCorrection(const float value) { _info._temperatureCorrection = value; }
-	void setPressureCorrection(const float value) { _info._pressureCorrection = value; }
-	void setInfo(const BmpInfo& info) { _info = info; }
-	const BmpInfo& getInfo() const { return _info; }
-	double getCorrectTemperature() const { return getTemperature() + _info._temperatureCorrection; }
-	double getCorrectPressure() const { return getMmHg() + _info._pressureCorrection; }
+	AdvancedBmp() { _info = Settings::getInstance()->getBmpInfo(); }
+	void setTemperCorrection(const float value) { _info->_temperatureCorrection = value; }
+	void setPressureCorrection(const float value) { _info->_pressureCorrection = value; }
+	std::shared_ptr<BmpInfo> getInfo() const { return _info; }
+	double getCorrectTemperature() const { return getTemperature() + _info->_temperatureCorrection; }
+	double getCorrectPressure() const { return getMmHg() + _info->_pressureCorrection; }
 };
 
 class SensorsManager {

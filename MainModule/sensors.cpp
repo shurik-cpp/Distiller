@@ -1,5 +1,5 @@
 #include "sensors.h"
-
+#include <algorithm>
 
 OneWireAddress::OneWireAddress() {
 	uint8_t _rawAddress[OneWireAddress::getAddressLength()];
@@ -94,7 +94,7 @@ DS18B20::DS18B20(DS18B20 &&other)
 
 const DS18B20 &DS18B20::operator=(const DS18B20 &other) {
 	_address = other._address;
-	// _info = other._info;
+	_info = other._info;
 	_rawTemperature = other._rawTemperature;
 	_timer = other._timer;
 	return *this;
@@ -102,20 +102,25 @@ const DS18B20 &DS18B20::operator=(const DS18B20 &other) {
 
 const DS18B20 &DS18B20::operator=(DS18B20 &&other) {
 	_address = std::move(other._address);
-	// _info = std::move(other._info);
+	_info = std::move(other._info);
 	_rawTemperature = std::move(other._rawTemperature);
 	_timer = std::move(other._timer);
 	return *this;
 }
 
 void DS18B20::init() {
-	setName("");
-	_info._hash = _address.getHash();
-	setResolution(DS_Resolution::TEMP_12_BIT);
-}
+	const SensorHash hash = getHash();
+	Settings* settings = Settings::getInstance();
+	_info = settings->getSensorInfoAtHash(hash);
 
-void DS18B20::setInfo(const SensorInfo &info) {
-	_info = info;
+	if (!_info.get()) {
+		_info = std::shared_ptr<SensorInfo>(new SensorInfo());
+		_info->_hash = hash;
+		settings->addSensorInfo(_info);
+	}
+	else {
+		setResolution(_info->_resolution);
+	}
 }
 
 float DS18B20::getTemperature() const {
@@ -123,15 +128,15 @@ float DS18B20::getTemperature() const {
 }
 
 void DS18B20::setName(const String &name) {
-	_info._name = name.isEmpty() ? _address.asString() : name;
+	_info->_name = name.isEmpty() ? _address.asString() : name;
 }
 
 const String& DS18B20::getName() const { 
-	return _info._name; 
+	return _info->_name; 
 }
 
 void DS18B20::setResolution(const DS_Resolution res) {
-	_info._resolution = res;
+	_info->_resolution = res;
 	switch (res) {
 		case DS_Resolution::TEMP_9_BIT:
 			_timer.SetPeriod(94); // магические числа взяты из даташита
@@ -146,10 +151,6 @@ void DS18B20::setResolution(const DS_Resolution res) {
 			_timer.SetPeriod(750);
 		break;
 	}
-}
-
-void DS18B20::recalcHash() {
-    _info._hash = _address.getHash();
 }
 
 bool DS18B20::isTimerReady() const { 
@@ -168,7 +169,6 @@ SensorsManager::SensorsManager()
 
 	_rescanBusTimer.SetPeriod(Time::SEC_5);
 	_bmp.begin();
-	_bmp.setInfo(Settings::getInstance()->getBmpInfo());
 	rescanOneWireBus();
 }
 
@@ -202,12 +202,11 @@ void SensorsManager::rescanOneWireBus() {
 #ifdef DEBUG
 		// Serial.printf("address: %s, CRC: %u \n", sensor._info._name.c_str(), sensor._info._hash);
 #endif //DEBUG
-		// вспоминаем настройки из json для подключенных датчиков.
-		if (const SensorInfo* info = settings->getSensorInfoAtHash(sensor.getHash())) {
-			sensor.setInfo(*info);
-			for (const auto& lastSensorData : _dsSensors) {
-				if (sensor.getHash() == lastSensorData.getHash()) {
-					sensor = lastSensorData;
+		const SensorHash hash = sensor.getInfo()->_hash;
+		if (const SensorInfo* info = settings->getSensorInfoAtHash(hash).get()) {
+			for (auto& lastSensorData : _dsSensors) {
+				if (hash == lastSensorData.getInfo()->_hash) {
+					std::swap(sensor, lastSensorData);
 				}
 			}
 		}
@@ -217,7 +216,7 @@ void SensorsManager::rescanOneWireBus() {
 		}
 		rescan_data.push_back(sensor);
 	}
-	_dsSensors = std::move(rescan_data);
+	std::swap(_dsSensors, rescan_data);
 }
 
 void SensorsManager::setRescanTimer(const uint32_t millis_period) {
@@ -241,15 +240,11 @@ size_t SensorsManager::getSensorsCount() const {
 }
 
 bool SensorsManager::saveSensorsDataToJson() const {
-	std::vector<SensorInfo> infos;
-	for (const auto& it : _dsSensors) {
-		infos.push_back(it.getInfo());
-	}
-	return Settings::getInstance()->saveSensorsInfo(infos);
+	return Settings::getInstance()->saveSensorsInfo();
 }
 
 bool SensorsManager::saveBmpDataToJson() const {
-    return Settings::getInstance()->saveBmpInfo(_bmp.getInfo());
+    return Settings::getInstance()->saveBmpInfo();
 }
 
 float SensorsManager::getTemperature(const SensorHash hash) const {
@@ -263,16 +258,16 @@ float SensorsManager::getTemperature(const SensorHash hash) const {
 
 void SensorsManager::dsTick() {
 	std::vector<DS18B20*> lostSensors;
-	for (auto& it : _dsSensors) {
-		if (it.isTimerReady()) {
-			const float temp = _dsInterface.getTempC(it.getAddress().getRawAddress());
-			if (_dsInterface.requestTemperaturesByAddress(it.getAddress().getRawAddress())
+	for (auto& sensor : _dsSensors) {
+		if (sensor.isTimerReady()) {
+			const float temp = _dsInterface.getTempC(sensor.getAddress().getRawAddress());
+			if (_dsInterface.requestTemperaturesByAddress(sensor.getAddress().getRawAddress())
 				&& static_cast<int>(temp) != DEVICE_DISCONNECTED_C) 
 			{
-				it.setRawTemperature(temp);
+				sensor.setRawTemperature(temp);
 			}
 			else {
-				lostSensors.push_back(&it);
+				lostSensors.push_back(&sensor);
 			}
 		}
 	}
@@ -280,7 +275,7 @@ void SensorsManager::dsTick() {
 	if (!lostSensors.empty()) {
 		for (const auto* it : lostSensors) {
 			//TODO: Создать event о потерянном датчике
-			Serial.printf("lost: %s\n", it->getInfo()._name.c_str());
+			Serial.printf("lost: %s\n", it->getInfo()->_name.c_str());
 		}
 	}
 #endif //DEBUG

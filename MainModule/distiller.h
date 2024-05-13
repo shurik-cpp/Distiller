@@ -4,10 +4,12 @@
 #include "settings.h"
 #include "sensors.h"
 #include <map> //From library ArduinoSTL
+#include <memory>
 
 
 class Distiller {
 private:
+	static Distiller* distiller;
 	enum {
 		IDLE = 0,
 		HEATING,
@@ -17,9 +19,8 @@ private:
 		COMPLETION
 	} _state;
 	
-	DistillerMode _mode;
+	std::shared_ptr<DistillerInfo> _info;
 
-	std::map<SensorLocation, SensorHash> _sensorsMap;
 	void autoTick();
 	void semiAutoTick();
 	void manualTick();
@@ -36,6 +37,7 @@ public:
 	void tick();
 
 	bool setMode(const DistillerMode value);
+	bool saveDataToJson();
 };
 
 #endif //DISTILLER_H
